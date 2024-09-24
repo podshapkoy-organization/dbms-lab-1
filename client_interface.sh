@@ -1,10 +1,14 @@
 #!/bin/bash
 
-ACCESS_CHECK=$(psql -h pg -d ucheb -c "SELECT 1 FROM pg_namespace WHERE nspname = 'public';" 2>&1)
+read -p "Текст запроса: " SEARCH_TEXT
 
-if echo "$ACCESS_CHECK" | grep -q "permission denied"; then
-    echo "Ошибка: У вас нет доступа к схеме public"
-    exit 1
+SEARCH_TEXT=$(echo "$SEARCH_TEXT" | iconv -f $(locale charmap) -t UTF-8)
+
+ACCESS_CHECK=$(psql -h pg -d studs -c "SELECT 1 FROM pg_namespace WHERE nspname = 'public';" 2>&1)
+
+if [[ $ACCESS_CHECK == *"ERROR"* ]]; then
+  echo "Ошибка доступа к базе данных."
+  exit 1
 fi
 
-psql -h pg -d ucheb -f ~/full_text_search.sql 2>&1 | sed 's|.*NOTICE:  ||g'
+psql -h pg -d studs -c "CALL full_text_search('$SEARCH_TEXT');" | sed 's|.*NOTICE:  ||g'
