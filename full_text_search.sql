@@ -1,12 +1,24 @@
 create or replace procedure full_text_search(search_text text)
     language plpgsql
 as
+    -- set my.table_name to :'table_name';
+-- do
 $$
 DECLARE
---     search_text TEXT := 'Н_ЛЮДИ';
+--         search_text   TEXT := upper(current_setting('my.table_name'));
     object_record RECORD;
-    object_count  INT := 0;
+    object_count  INT  := 0;
+    table_exists  boolean;
 BEGIN
+
+    raise notice 'Проверка существования таблицы: %', search_text;
+    select exists(select 1 from pg_tables where upper(tablename) = search_text) into table_exists;
+
+    if not table_exists then
+        raise notice 'Таблицы не существует';
+        return;
+    end if;
+
     RAISE NOTICE 'Текст запроса: %', search_text;
     RAISE NOTICE 'No.  Имя объекта           # строки  Текст';
     RAISE NOTICE '--- -------------------    ----------  --------------------------------------------';
@@ -19,9 +31,7 @@ BEGIN
                               JOIN pg_namespace n ON p.pronamespace = n.oid
                      WHERE n.nspname = 'public'
                        AND p.prosrc ILIKE '%' || search_text || '%'
-
                      UNION ALL
-
                      SELECT t.tgname                 AS object_name,
                             pg_get_triggerdef(t.oid) AS object_code,
                             'Trigger'                AS object_type
@@ -53,5 +63,4 @@ BEGIN
 
     DROP TABLE temp_lines;
 END
-$$
-
+$$;

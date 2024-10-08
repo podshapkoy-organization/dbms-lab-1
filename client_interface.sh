@@ -2,7 +2,7 @@
 
 read -p "Текст запроса: " SEARCH_TEXT
 
-SEARCH_TEXT=$(echo "$SEARCH_TEXT" | iconv -f $(locale charmap) -t UTF-8)
+SEARCH_TEXT=$(echo "$SEARCH_TEXT" | tr "[:lower:]" "[:upper:]" | iconv -f $(locale charmap) -t UTF-8)
 
 ACCESS_CHECK=$(psql -h pg -d studs -c "SELECT 1 FROM pg_namespace WHERE nspname = 'public';" 2>&1)
 
