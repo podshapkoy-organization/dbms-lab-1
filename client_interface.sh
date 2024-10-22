@@ -1,18 +1,10 @@
 #!/bin/bash
 
-read -p "Введите схему поиска: " SEARCH_SCHEMA
-read -p "Текст запроса: " SEARCH_TEXT
+read -p "Введите имя таблицы: " SEARCH_TEXT
 
-ACCESS_CHECK=$(psql -h pg -d studs -c "SELECT 1 FROM pg_namespace WHERE nspname = '$SEARCH_SCHEMA';" 2>&1)
+SCHEMA_NAME=$(echo "$SEARCH_TEXT" | cut -d '.' -f 1)
+TABLE_NAME=$(echo "$SEARCH_TEXT" | cut -d '.' -f 2)
 
-if [[ $ACCESS_CHECK == *"ERROR"* ]]; then
-  echo "Ошибка доступа к базе данных."
-  exit 1
-fi
+SEARCH_TABLE=$(echo "$TABLE_NAME" | tr '[:lower:]' '[:upper:]')
 
-# shellcheck disable=SC2046
-SEARCH_TEXT=$(echo "$SEARCH_TEXT" | tr "[:lower:]" "[:upper:]" | iconv -f $(locale charmap) -t UTF-8)
-
-
-
-psql -h pg -d studs -c "CALL full_text_search('$SEARCH_SCHEMA', '$SEARCH_TEXT');" | sed 's|.*NOTICE:  ||g'
+psql -h pg -d studs -c "CALL full_text_search('$SCHEMA_NAME', '$SEARCH_TABLE');" | sed 's|.*NOTICE:  ||g'
