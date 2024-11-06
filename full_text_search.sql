@@ -1,76 +1,49 @@
 create or replace procedure full_text_search(search_schema text, search_text text)
     language plpgsql
 as
--- set my.table_name to :'table_name';
--- set my.schema_name to :'schema_name';
--- do
 $$
-    DECLARE
---         search_schema TEXT := current_setting('my.schema_name');
---         search_text   TEXT := upper(current_setting('my.table_name'));
-        object_record RECORD;
-        object_count  INT  := 0;
-        schema_exists boolean;
-        table_exists  boolean;
-    BEGIN
+declare
+    obj_record  RECORD;
+    line_number int;
+    line_text   text;
+    counter     int := 0;
+begin
+    raise notice 'Текст запроса: %', search_text;
+    raise notice 'No. | Имя объекта   | # строки | Текст';
+    raise notice '----|---------------|----------|--------------------------------------------';
 
-        raise notice 'Проверка существования схемы: %', search_schema;
-        select exists(select 1 from pg_namespace where nspname = search_schema) into schema_exists;
-        if not schema_exists then
-            raise notice 'Схемы не существует';
-            return;
-        end if;
+    for obj_record in
+        select p.proname                 as object_name,
+               pg_get_functiondef(p.oid) as object_definition
+        from pg_proc p
+                 join
+             pg_namespace n on p.pronamespace = n.oid
+        where n.nspname = search_schema
+          and (p.prokind = 'p' or p.prokind = 'f')
+        union all
+        select t.tgname                 as object_name,
+               pg_get_triggerdef(t.oid) as object_definition
+        from pg_trigger t
+                 join
+             pg_class c ON t.tgrelid = c.oid
+                 join
+             pg_namespace n ON c.relnamespace = n.oid
+        where n.nspname = search_schema
+        loop
+            line_number := 1;
+            for line_text in select unnest(string_to_array(obj_record.object_definition, E'\n'))
+                loop
+                    if position(search_text in line_text) > 0 then
+                        counter := counter + 1;
+                        raise notice '% | % | % |%',
+                            rpad(counter::text, 3),
+                            rpad(obj_record.object_name, 13),
+                            rpad(line_number::text, 8),
+                            left(line_text, 20);
+                    end if;
+                    line_number := line_number + 1;
+                end loop;
+        end loop;
+end;
+$$
 
-        raise notice 'Проверка существования таблицы: %', search_text;
-        select exists(select 1 from pg_tables where upper(tablename) = search_text) into table_exists;
-
-        if not table_exists then
-            raise notice 'Таблицы не существует';
-            return;
-        end if;
-
-        RAISE NOTICE 'Текст запроса: %', search_text;
-        RAISE NOTICE 'No.  Имя объекта           # строки  Текст';
-        RAISE NOTICE '--- -------------------    ----------  --------------------------------------------';
-
-        CREATE TEMP TABLE temp_lines AS
-        WITH objects AS (SELECT p.proname            AS object_name,
-                                p.prosrc             AS object_code,
-                                'Function/Procedure' AS object_type
-                         FROM pg_proc p
-                                  JOIN pg_namespace n ON p.pronamespace = n.oid
-                         WHERE n.nspname = search_schema
-                           AND p.prosrc ILIKE '%' || search_text || '%'
-                         UNION ALL
-                         SELECT t.tgname                 AS object_name,
-                                pg_get_triggerdef(t.oid) AS object_code,
-                                'Trigger'                AS object_type
-                         FROM pg_trigger t
-                                  JOIN pg_class c ON t.tgrelid = c.oid
-                                  JOIN pg_namespace n ON c.relnamespace = n.oid
-                         WHERE n.nspname = search_schema
-                           AND pg_get_triggerdef(t.oid) ILIKE '%' || search_text || '%')
-        SELECT object_name,
-               object_code,
-               object_type,
-               line,
-               ROW_NUMBER() OVER (PARTITION BY object_name ORDER BY line_number) AS line_number
-        FROM objects
-                 CROSS JOIN LATERAL unnest(string_to_array(object_code, E'\n')) WITH ORDINALITY AS t(line, line_number)
-        WHERE line ILIKE '%' || search_text || '%';
-
-        FOR object_record IN
-            SELECT ROW_NUMBER() OVER ()   AS No,
-                   object_name            AS "Имя объекта",
-                   line_number            AS "# строки",
-                   substring(line, 1, 50) AS "Текст"
-            FROM temp_lines
-            ORDER BY No
-            LOOP
-                object_count := object_count + 1;
-                RAISE NOTICE '%    %-20s    %          %', object_count, object_record."Имя объекта", object_record."# строки", object_record."Текст";
-            END LOOP;
-
-        DROP TABLE temp_lines;
-    END
-$$;
